@@ -19,7 +19,7 @@ TOKEN_SECRET = 'nobody-expects-the-spanish-inquisition'
 contestant_access = 0
 
 loop = asyncio.get_event_loop()
-app = aiohttp.web.Application(loop=loop, client_max_size=10*(1024**2))
+app = aiohttp.web.Application(client_max_size=10*(1024**2))
 
 app.router.add_static('/static', './static')
 
@@ -50,9 +50,9 @@ async def get_token_cookie(username, password):
             'user': username,
             'admin': user['admin'],
             'display_name': user['username'],
-            'exp': datetime.datetime.utcnow() + datetime.timedelta(hours = 72)
+            'exp': datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours = 72)
         }
-        return jwt.encode(datablob, TOKEN_SECRET, algorithm = 'HS256').decode('utf-8')
+        return jwt.encode(datablob, TOKEN_SECRET, algorithm = 'HS256')
 
 async def page_login_post(request):
     req = await request.post()
@@ -71,7 +71,7 @@ def require_login_decorate(function, admin = False):
     async def replacement(request):
         token = request.cookies.get('login-token')
         if token != None:
-            decoded = jwt.decode(token, TOKEN_SECRET, algorithm = 'HS256')
+            decoded = jwt.decode(token, TOKEN_SECRET, algorithms = ['HS256'])
             if decoded:
                 if not admin or decoded.get('admin'):
                     username = decoded['user']
@@ -269,9 +269,35 @@ async def get_settings():
     global contestant_access, scoreboard_freeze_id
     contestant_access = await database.connection.fetchval(SELECT_SETTING, 'contestant_access')
 
+async def run_server(ip, port):
+    runner = aiohttp.web.AppRunner(app)
+    await runner.setup()
+
+    site = aiohttp.web.TCPSite(runner, ip, port)
+    await site.start()
+
+    print("#" * 20 + f" Server running on {ip}:{port} " + "#" * 20)
+
+    return runner
+
+async def try_cleanup(runner):
+    print("Attempting to clean up! Ctrl+C again to force exit.")
+    await runner.cleanup()
+    print("Cleaned up. Goodbye!")
+
 if __name__ == '__main__':
     problems.load_problem_info()
+
     task = loop.create_task(get_settings())
     loop.run_until_complete(task)
-    p = os.getenv('PORT')
-    aiohttp.web.run_app(app, host = '0.0.0.0', port = int(p) if p else 3000, )
+
+    port = os.getenv('PORT')
+    port = int(port) if port else 3000
+    task = loop.create_task(run_server("0.0.0.0", port))
+    runner = loop.run_until_complete(task)
+
+    try:
+        loop.run_forever()
+    finally:
+        if not loop.is_closed():
+            loop.run_until_complete(loop.create_task(try_cleanup(runner)))

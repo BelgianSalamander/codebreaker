@@ -1,6 +1,6 @@
-aiohttp==3.7.3
+aiohttp==3.11.11
 asyncpg
 jinja2
-PyJWT==1.7.1
+PyJWT==2.10.1
 aiohttp_jinja2
 pygments
