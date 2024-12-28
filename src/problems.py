@@ -13,10 +13,12 @@ class Problem:
     broken_exe = ''
     correct_exe = ''
     checker_exe = ''
+    problem_url = None
 
-    def __init__(self, ln, sn, tc):
+    def __init__(self, ln, sn, tc, url):
         self.long_name = ln
         self.short_name = sn
+        self.problem_url = url
         with open(os.path.join(os.getcwd(), PROBLEM_DIR, tc), "r") as f:
             self.task_code = f.read()
 
@@ -63,7 +65,7 @@ def load_problem_info():
     with open(os.path.join(os.getcwd(), PROBLEM_DIR, 'problems.json'), 'r') as f:
         problems = json.load(f)
     for d in problems:
-        p = Problem(d['long_name'], d['short_name'], d['task_code'])
+        p = Problem(d['long_name'], d['short_name'], d['task_code'], d['url'] if 'url' in d else None)
         assert(p.short_name not in problem_dict)
         problem_dict[p.short_name] = p
 

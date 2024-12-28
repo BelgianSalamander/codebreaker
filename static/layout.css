@@ -96,8 +96,17 @@ div.problem-statement {
     margin-right: auto;
 }
 
-div.problem-statement h1 {
+div.problem-statement h1, h3 {
     text-align: center;
+}
+
+div.problem-statement h3 {
+	margin-top: -1em;
+}
+
+#problem_link {
+	text-decoration: none;
+	color: gray;
 }
 
 div.highlight pre {

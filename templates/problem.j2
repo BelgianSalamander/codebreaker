@@ -3,6 +3,9 @@
 {% block content %}
 		<div class="problem-statement">
 				<h1>{{ problem.long_name }}</h1>
+				{% if problem.problem_url %}
+					<a href="{{ problem.problem_url }}" id="problem_link" target="_blank" rel="noopener noreferrer"><h3>{{ problem.problem_url }}</h3></a>
+				{% endif %}
                 {{ code | safe }}
                 {% if show_submit %}
 				<h2>Submit</h2>
