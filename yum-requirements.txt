@@ -1,4 +1,4 @@
-postgresql
+sqlite3
 nginx
 python3
 virtualenv

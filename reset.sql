@@ -1,6 +1,6 @@
 -- WARNING: THIS SCRIPT WILL DELETE ALL USER DATA! DO NOT RUN DURING A CODEBREAKER CONTEST
-TRUNCATE users CASCADE;
-TRUNCATE results CASCADE;
+DELETE FROM users;
+DELETE FROM results;
 
 INSERT INTO users(username, password, visible, admin) VALUES ('tutors', 'simmeringaioli', FALSE, TRUE);
 

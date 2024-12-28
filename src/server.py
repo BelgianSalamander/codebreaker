@@ -44,7 +44,7 @@ async def page_login(request):
 app.router.add_get('/', page_login)
 
 async def get_token_cookie(username, password):
-    user = await database.connection.fetchrow('SELECT * FROM users WHERE username = $1 AND password = $2;', username, password)
+    user = await database.fetch_one('SELECT * FROM users WHERE username = $1 AND password = $2;', username, password)
     if user is not None and user['password'] == password:
         datablob = {
             'user': username,
@@ -80,6 +80,7 @@ def require_login_decorate(function, admin = False):
                     request._admin = decoded.get('admin', False)
                     result = await function(request)
                     if isinstance(result, dict):
+                        print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
                         result['username'] = username
                         result['password'] = password
                     return result
@@ -98,13 +99,13 @@ def require_admin(function):
 SELECT_RESULTS = '''
 SELECT score, status, complete, id
 FROM results
-WHERE owner = $1 AND problem = $2;
+WHERE owner = ? AND problem = ?;
 '''
 
 SELECT_COMPLETED_PROBLEMS = '''
 SELECT DISTINCT problem
 FROM results
-WHERE score > 0 AND owner = $1;
+WHERE score > 0 AND owner = ?;
 '''
 
 @require_login
@@ -112,8 +113,8 @@ WHERE score > 0 AND owner = $1;
 async def page_problem_description(request):
     name = request.match_info['name']
     problem = problems.get_problem(name)
-    res = await database.connection.fetch(SELECT_RESULTS, request._username, name)
-    completed = await database.connection.fetch(SELECT_COMPLETED_PROBLEMS, request._username)
+    res = await database.fetch_all(SELECT_RESULTS, request._username, name)
+    completed = await database.fetch_all(SELECT_COMPLETED_PROBLEMS, request._username)
     completed = {r['problem'] for r in completed}
     best_score = 0
     for i in res:
@@ -144,7 +145,7 @@ ENQUE_TASK = '''
 INSERT INTO results
 (owner, score, status, problem, complete, proposed_input, correct_output)
 VALUES
-($1, 0, 'In queue', $2, FALSE, $3, $4);
+(?, 0, 'In queue', ?, FALSE, ?, ?);
 '''
 
 @require_login
@@ -167,7 +168,8 @@ async def page_submit(request):
 
         if mark_it:
             # Enqueue the task
-            await database.connection.execute(ENQUE_TASK, username, name, proposed_input, correct_output)
+            await database.connection.execute(ENQUE_TASK, [username, name, proposed_input, correct_output])
+            await database.connection.commit()
             await asyncio.sleep(2)
     return aiohttp.web.HTTPSeeOther('/problem/' + name)
 app.router.add_post('/submit/{name}', page_submit)
@@ -177,7 +179,7 @@ app.router.add_post('/submit/{name}', page_submit)
 @aiohttp_jinja2.template('submission.j2')
 async def page_submission(request):
     sql = 'SELECT proposed_input, correct_output, owner FROM results WHERE id = $1'
-    row = await database.connection.fetchrow(sql, int(request.match_info['id']))
+    row = await database.fetch_one(sql, int(request.match_info['id']))
     allow = (row['owner'] == request._username) or request._admin
     return {
         'proposed_input': row['proposed_input'] if allow else 'Could not find anything :(',
@@ -203,7 +205,7 @@ app.router.add_get('/scoreboard', page_scoreboard)
 @aiohttp_jinja2.template('admin.j2')
 async def page_admin(request):
     global contestant_access
-    res = await database.connection.fetch('SELECT * FROM results ORDER BY id DESC LIMIT 200')
+    res = await database.fetch_all('SELECT * FROM results ORDER BY id DESC LIMIT 200')
     return {
         'results': res,
         'username': request._display_name,
@@ -218,7 +220,7 @@ queue_tasks = {
         'command': '''
             UPDATE results
             SET complete = FALSE, score = 0, status = 'In queue (rejudging)'
-            WHERE id = $1;
+            WHERE id = ?;
             ''',
         'sleep_time': 2,
         'description': 'Rejudging'
@@ -226,7 +228,7 @@ queue_tasks = {
     'DELETE': {
         'command': '''
             DELETE FROM results
-            WHERE id = $1;
+            WHERE id = ?;
             ''',
         'sleep_time': 0.1,
         'description': 'Deleting'
@@ -244,12 +246,14 @@ async def page_admin_post(request):
             assert(0 <= v and v < 4)
             contestant_access = v
             print("set to", contestant_access)
-            await database.connection.execute("UPDATE settings SET value = $1 WHERE name = 'contestant_access';", contestant_access)
+            await database.connection.execute("UPDATE settings SET value = $1 WHERE name = 'contestant_access';", [contestant_access])
+            await database.connection.commit()
             print("updated contestant access - %s" % (contestant_access))
         else:
             sid = int(postdata['id'].strip())
             task = queue_tasks[cmd]
-            await database.connection.execute(task['command'], sid)
+            await database.connection.execute(task['command'], [sid])
+            await database.connection.commit()
             await asyncio.sleep(task['sleep_time'])
             print('%s submission - %s' % (task['description'], sid))
     except Exception as e:
@@ -262,12 +266,14 @@ app.router.add_post('/admin', page_admin_post)
 SELECT_SETTING = '''
 SELECT value
 FROM settings
-WHERE name = $1;
+WHERE name = ?;
 '''
 
 async def get_settings():
     global contestant_access, scoreboard_freeze_id
-    contestant_access = await database.connection.fetchval(SELECT_SETTING, 'contestant_access')
+
+    contestant_access, = await database.fetch_one(SELECT_SETTING, 'contestant_access')
+    print("Contestant access", contestant_access)
 
 async def run_server(ip, port):
     runner = aiohttp.web.AppRunner(app)
@@ -283,6 +289,7 @@ async def run_server(ip, port):
 async def try_cleanup(runner):
     print("Attempting to clean up! Ctrl+C again to force exit.")
     await runner.cleanup()
+    await database.connection.close()
     print("Cleaned up. Goodbye!")
 
 if __name__ == '__main__':

@@ -1,5 +1,4 @@
 #!/bin/sh
 
 mkdir -p temp/
-psql -U postgres -f table_setup.sql
-
+sqlite3 codebreaker.db < table_setup.sql

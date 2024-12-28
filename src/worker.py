@@ -13,15 +13,15 @@ import problems
 
 UPDATE_COMPLETED = '''
 UPDATE results
-SET status = $3, score = $2, complete = TRUE
-WHERE id = $1 AND complete = FALSE;
+SET status = ?, score = ?, complete = TRUE
+WHERE id = ? AND complete = FALSE;
 '''
 
 should_run = True
 
 async def run_worker(number):
     while should_run:
-        jobs_to_do = await database.connection.fetch('SELECT * FROM results WHERE complete = FALSE ORDER BY id ASC')
+        jobs_to_do = await database.fetch_all('SELECT * FROM results WHERE complete = FALSE ORDER BY id ASC')
         if len(jobs_to_do) > 0:
             job = jobs_to_do[0]
             print('Processing job -', job['id'])
@@ -31,8 +31,8 @@ async def run_worker(number):
             if best_score > 0 and score > 0:
                 score = 0
                 status = 'Code already broken!'
-            await database.connection.execute(UPDATE_COMPLETED, job['id'], int(score), status)
-            print('Finished -', status)
+            await database.connection.execute(UPDATE_COMPLETED, [status, int(score), job['id']])
+            await database.connection.commit()
         else:
             await asyncio.sleep(0.2)
 
@@ -62,4 +62,7 @@ if __name__ == '__main__':
         asyncio.ensure_future(run_worker(i)) for i in range(num_threads)
     ]
     loop.run_until_complete(asyncio.wait(worker_list))
+
+    loop.run_until_complete(database.connection.close())
+
     loop.close()

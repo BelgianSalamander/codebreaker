@@ -9,14 +9,14 @@ SELECT_USER_PROBLEM_TOTAL = '''
 SELECT sum(score)
 FROM results LEFT JOIN users
 ON owner = users.username
-WHERE complete = TRUE and username = $1 and problem = $2;
+WHERE complete = TRUE and username = ? and problem = ?;
 '''
 
 SELECT_USER_PROBLEM_BEST = '''
 SELECT max(score)
 FROM results LEFT JOIN users
 ON owner = users.username
-WHERE complete = TRUE and username = $1 and problem = $2;
+WHERE complete = TRUE and username = ? and problem = ?;
 '''
 
 SELECT_VISIBLE_NAMES = '''
@@ -29,21 +29,25 @@ SELECT_SCOREBOARD_SCORES = '''
 SELECT username, problem, score
 FROM results LEFT JOIN users
 ON owner = users.username
-WHERE complete = TRUE AND id < $1
+WHERE complete = TRUE AND id < ?
 ORDER BY results.id ASC;
 '''
 
 UPDATE_LIMIT = 2
 
 async def get_user_problem_total(username, problem):
-    result = await database.connection.fetchval(SELECT_USER_PROBLEM_TOTAL, username, problem)
+    result, = await database.fetch_one(SELECT_USER_PROBLEM_TOTAL, username, problem)
     if result is None: result = 0
     return result
 
 async def get_user_problem_best(username, problem):
-    result = await database.connection.fetchval(SELECT_USER_PROBLEM_BEST, username, problem)
+    result, = await database.fetch_one(SELECT_USER_PROBLEM_BEST, username, problem)
     if result is None: result = 0
     return result
+
+async def get_visible_names():
+    vals = await database.fetch_all(SELECT_VISIBLE_NAMES)
+    return [x['username'] for x in vals]
 
 scoreboard = []
 last_update = 0
@@ -58,15 +62,15 @@ async def get_scoreboard():
     scores = {}
     scoreboard = []
 
-    names = [result['username'] for result in await database.connection.fetch(SELECT_VISIBLE_NAMES)]
+    names = await get_visible_names()
     probs = problems.get_alphabetical()
 
     for n in names:
         scores[n] = { p.short_name:[0] for p in probs}
 
-    scoreboard_freeze_id = await database.connection.fetchval("SELECT value FROM settings WHERE name = 'scoreboard_freeze_id';")
+    scoreboard_freeze_id, = await database.fetch_one("SELECT value FROM settings WHERE name = 'scoreboard_freeze_id';")
     if scoreboard_freeze_id is None: scoreboard_freeze_id = 1000000000
-    for result in await database.connection.fetch(SELECT_SCOREBOARD_SCORES, scoreboard_freeze_id):
+    for result in await database.fetch_all(SELECT_SCOREBOARD_SCORES, scoreboard_freeze_id):
         if result['username'] not in names: continue
         scores[result['username']][result['problem']].append(scores[result['username']][result['problem']][-1] + result['score'])
 
